@@ -2,7 +2,7 @@
 step: 01
 slug: project-foundation
 spec: .claude/specs/01-project-foundation.md
-status: approved
+status: done
 created: 2026-10-08
 approved: 2026-10-08
 ---
@@ -173,6 +173,12 @@ message when `catalog` is empty.
   `test_raw_load_integration.py`
 
 **Deviations from the plan (all minor, within scope):**
+- D1 in practice: the user put the code into Databricks through a
+  **Databricks Git folder** cloned from
+  `github.com/AmanShakya28515/sales-analytics-lakehouse`, not a manual
+  import. No code change is needed, because notebooks find `src/` relative
+  to their own folder either way. The README still describes manual import
+  and is updated in the next step that touches it.
 - `notebooks/` has a `README.md` instead of `.gitkeep`. The workspace UI
   import may skip dotfiles, which would leave the folder missing (AC-1).
 - `verify_raw_datasets` adds a `READ_ERROR` status for files Spark cannot
@@ -193,7 +199,37 @@ message when `catalog` is empty.
 - `env/Scripts/python.exe -m compileall -q src tests setup`: OK.
 - The sample files are LF-only. Line counts give 23/15/41/90 data rows.
 
-**User-reported (Databricks):** _pending_. See the checklist in the build report.
+**User-reported (Databricks, 2026-10-08), via a Git folder on serverless:**
+- Step 2: catalog `sales_lakehouse` was **created**, so the fallback to `workspace` was not needed.
+- The user reported that all checklist steps passed: setup, the re-runs for `dev` and `test`, load and
+  verify (twice), the focused `test_sample_data.py` run, the full suite with
+  `catalog` set, and no leftover `t01_*` schemas.
+- The exact `Ran …` summary lines and verify-table values were not pasted.
+  The suite contains 31 tests (layout 1, naming 5, setup_ddl 7, sample_data 9,
+  setup_integration 3, raw_load_integration 6).
+
+**Unresolved:** none.
 
 ## Review log
-_(filled in by /review)_
+
+### 2026-10-08 — review
+Scope: the "Files changed" list (git has only the initial commit, plus this
+plan's edits). Checked against AC-1 to AC-14, the plan and CLAUDE.md. Security
+was checked inline, without the sub-agent: catalog and env are validated as
+`[A-Za-z0-9_]+` before any `spark.sql`, then backtick-quoted, and comments are
+constants. There are no grants, no secrets, and no real PII (fictional names,
+`example.com`). No security findings.
+
+| ID | Sev | Where | Finding | Fix | State |
+|---|---|---|---|---|---|
+| Q-1 | Low | `src/sales_lakehouse/raw_datasets.py:179`, `:216-221` | The verifier's column checks are never exercised by a test: no test feeds a CSV with a wrong header (relies on `enforceSchema=false` → `READ_ERROR`) or a JSON file missing a column (→ `COLUMN_MISMATCH`). AC-13 column conformance of the repo files *is* covered by `test_sample_data`, and the volume copy is byte-identical, so step 01 is correct. The gap matters only if the verifier is reused on non-sample files. | Add two integration tests (rewrite a header; drop a JSON key) asserting a non-`OK` status. | accepted |
+| Q-2 | Low | `README.md:32-33` | "Getting started" says to import the folder manually, but the project is now used through a Databricks Git folder (see Deviations). A new reader would follow the wrong path. | Change step 1 to: clone/Pull the Git folder; commit and push locally, then Pull before re-running. | accepted |
+| Q-3 | Low | repo root (no `.gitattributes`) | `core.autocrlf=true` locally, and there are no explicit line-ending rules for the sample data. Today the blobs are LF, but a commit from another machine or setting could introduce CRLF into the CSV/JSON. | Add `.gitattributes` with `* text=auto eol=lf`. | accepted |
+| Q-4 | Low | `src/sales_lakehouse/raw_datasets.py:165-170` | The load is not atomic across datasets. If a copy fails mid-run, that dataset's folder is left empty. Verify then reports `MISSING`, and a re-run restores it (the repo is the source of truth), so no data is lost. | Accept. If needed later, copy to a temp name and rename. | accepted |
+
+No High or Medium findings. All ACs are implemented and covered (user-reported green run).
+
+### 2026-10-08 — close
+The user accepted all four Lows (Q-1 to Q-4). They are recorded under Known
+limitations in CLAUDE.md. Q-2 (README) will be fixed in the next step that
+touches the README. No code changed after the green run, so it was not re-run.

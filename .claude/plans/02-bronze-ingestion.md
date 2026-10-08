@@ -2,7 +2,7 @@
 step: 02
 slug: bronze-ingestion
 spec: .claude/specs/02-bronze-ingestion.md
-status: reviewed
+status: built
 created: 2026-10-08
 approved: 2026-10-08
 ---
@@ -250,5 +250,7 @@ No High findings. AC-1 to AC-12 are implemented and covered (58/58 user-reported
   the run begins writing (after validation), and lists "no data rows" among
   the failure causes.
 - Q-2 stays open (Low; goes to Known limitations at `/done`).
-- Measured by Claude: local syntax check OK. Databricks re-run: _pending_
-  (expected focused Ran 28, full Ran 59).
+- Measured by Claude: local syntax check OK.
+- **User-reported (Databricks, after pulling `088296b`):** Bronze tests **Ran 28:
+  failures=0, errors=0**. Full suite **Ran 59: failures=0, errors=0**.
+  `SHOW SCHEMAS IN sales_lakehouse LIKE 't01_*'` returned no rows.

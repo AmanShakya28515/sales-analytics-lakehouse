@@ -29,18 +29,25 @@ Use `env=dev` for working data and `env=test` for test runs.
 
 ## Getting started (Databricks Free Edition)
 
-1. Import this project folder into your Databricks workspace (Workspace →
-   your folder → Import, or drag and drop). Re-import after local changes.
-2. Run `setup/00_setup_catalog_objects` with `catalog` and `env`.
-   If Databricks refuses to create the catalog, the notebook stops and says
-   so. Re-run it with `catalog=workspace`. It never switches catalogs on
-   its own.
-3. Run `setup/01_load_sample_data` with the same parameters. It replaces the
-   files in the volume, so re-running it is safe.
-4. Run `setup/02_verify_raw_data`. It fails if any dataset is missing or has
-   the wrong row count or columns.
-5. Run `tests/run_tests`. Set `catalog` to run the integration tests, which
-   create and drop their own temporary `t01_<random>` schemas.
+The project runs from a **Databricks Git folder** cloned from this GitHub
+repository. After changing code locally, commit and push. Then, in the Git
+folder, click the branch name and **Pull** before running anything.
 
-The sample data and its deliberate quality problems are documented in
-`docs/data_dictionary.md`.
+Run these in order with the same `catalog` and `env` widgets:
+
+1. `setup/00_setup_catalog_objects` creates the catalog (if allowed), the
+   `<env>_bronze/_silver/_gold` schemas and the `raw_data` volume. If
+   Databricks refuses to create the catalog, the notebook stops and says so.
+   Re-run it with `catalog=workspace`. It never switches catalogs on its own.
+2. `setup/01_load_sample_data` copies `data/sample/` into the volume. It
+   replaces existing files, so re-running is safe.
+3. `setup/02_verify_raw_data` fails if any dataset is missing or has the
+   wrong row count or columns.
+4. `notebooks/bronze_ingest` loads the raw files into the Bronze Delta tables.
+   Each run is a full refresh with ingestion metadata. If any dataset is
+   invalid, nothing is changed.
+5. `tests/run_tests` runs the tests. Set `catalog` to run the integration
+   tests, which create and drop their own temporary `t01_<random>` schemas.
+
+The sample data, the Bronze tables and the deliberate quality problems are
+documented in `docs/data_dictionary.md`.

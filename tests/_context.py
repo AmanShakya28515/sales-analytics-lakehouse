@@ -15,6 +15,13 @@ CATALOG = ""
 TEST_ENV_PREFIX = "t01_"
 
 
+def require_spark():
+    """Return spark for unit tests that need a session but no catalog."""
+    if SPARK is None:
+        raise unittest.SkipTest("Spark test: run it through tests/run_tests in Databricks.")
+    return SPARK
+
+
 def require_integration():
     """Return (spark, catalog), or skip when no catalog was given to run_tests."""
     if SPARK is None or not CATALOG:

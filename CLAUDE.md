@@ -193,13 +193,51 @@ CI/CD, streaming, secret management or cloud storage integration.
 *`/done` adds to this as each step lands. Record only what was actually
 built, plus the reasoning behind any structural choice.*
 
-(empty)
+- **Unity Catalog layout:** one catalog (parameter, default `sales_lakehouse`;
+  Free Edition allowed creating it) with one schema per layer per environment:
+  `<env>_bronze`, `<env>_silver`, `<env>_gold` (`dev`, `test`). Raw files live in
+  the managed volume `<env>_bronze.raw_data`, one folder per dataset
+  (`raw_data/<dataset>/<file>`). *Why:* volumes belong to schemas, and
+  per-environment schemas keep dev and test fully separate.
+- **Setup is code, not hand edits:** `setup/00` (catalog objects, all
+  `IF NOT EXISTS`), `01` (copy sample files: empty each dataset folder, then
+  copy), `02` (verify). If the catalog cannot be created, setup stops and
+  tells the user to re-run with `catalog=workspace`. There is no automatic fallback,
+  so the target catalog is always explicit.
+- **Identifiers:** catalog and env are validated (`[A-Za-z0-9_]+`, lowercased)
+  in `sales_lakehouse.naming` before any SQL, then backtick-quoted. Reuse
+  `layer_names()` and `quote()` for every new name built from parameters.
+- **Raw data contract:** `sales_lakehouse.raw_datasets` is the single registry
+  (columns, PK/FKs, format, expected rows, `KNOWN_ISSUES`). Raw reads use an
+  explicit **all-STRING** schema, so malformed values survive into Bronze;
+  intended types are applied in Silver (see `docs/data_dictionary.md`). CSV has a
+  header row; orders is JSON Lines.
+- **Sample data** (`data/sample/`, versioned): 23 customers, 15 products,
+  41 orders, 90 order items, including 10 documented dirty records (null key,
+  exact duplicate, changed record, malformed value, invalid value, orphan
+  reference). Silver steps should handle each of them deliberately.
+- **Code delivery:** a Databricks Git folder cloned from GitHub
+  (`AmanShakya28515/sales-analytics-lakehouse`). Push locally, then Pull in
+  the Git folder before running. Notebooks add `<repo>/src` to `sys.path` from
+  their own folder and purge cached `sales_lakehouse` modules.
+- **Tests:** `tests/run_tests` (widgets `pattern`, `catalog`). Integration tests
+  create and drop their own random `t01_<hex>` schemas and are skipped when
+  `catalog` is empty. Spark-free logic is tested with a recording stub.
 
 ### Known limitations (deliberately deferred)
-(none yet)
+- Raw-data verifier: the CSV-header and missing-JSON-column checks have no
+  test yet (01 Q-1). Add tests before reusing the verifier on new sources.
+- No `.gitattributes`. Sample files are LF in git, but line endings are not
+  enforced (01 Q-3).
+- `README.md` "Getting started" still describes manual import instead of the Git
+  folder (01 Q-2). Fix it in the next step that touches the README.
+- Sample loading is not atomic across datasets. A failed copy leaves that
+  folder empty until re-run, and verify reports it as `MISSING` (01 Q-4).
 
 ### Steps landed
-(none yet)
+- 01 — Project foundation: project layout, per-environment UC schemas and
+  `raw_data` volume, versioned sample datasets with documented dirty records,
+  and a re-runnable load-and-verify flow (31 tests, user-reported green).
 
 ---
 

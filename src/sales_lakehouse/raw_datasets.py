@@ -195,6 +195,60 @@ def _has_files(path):
     )
 
 
+def _short_error(exc):
+    text = str(exc).strip()
+    return text.splitlines()[0][:300] if text else repr(exc)
+
+
+def _json_lines_with_wrong_fields(spark, folder, columns):
+    """Count non-blank JSON lines whose field names are not exactly `columns`.
+
+    A FAILFAST JSON read with a schema silently turns a missing field into
+    NULL, so the field names are checked on the raw text instead. Invalid JSON
+    gives NULL keys and is counted too.
+    """
+    expected = F.array_sort(F.array(*[F.lit(c) for c in columns]))
+    keys = F.array_sort(F.expr("json_object_keys(value)"))
+    return (
+        spark.read.text(folder)
+        .where(F.trim(F.col("value")) != "")
+        .where(F.coalesce(keys != expected, F.lit(True)))
+        .count()
+    )
+
+
+def validate_raw_structure(spark, volume_root):
+    """Check that every dataset's files match the documented structure.
+
+    Row counts are deliberately not checked: the content may change between
+    runs. Returns a list of (dataset name, problem); an empty list means valid.
+    """
+    problems = []
+    for dataset in DATASETS:
+        folder = dataset_dir(volume_root, dataset.name)
+        if not _has_files(folder):
+            problems.append((dataset.name, f"no files in {folder}"))
+            continue
+        try:
+            if dataset.file_format == "csv":
+                # Counting every column forces a full FAILFAST parse, so a wrong
+                # header or a line with the wrong number of fields raises.
+                read_raw(spark, volume_root, dataset).agg(
+                    *[F.count(F.col(c)) for c in dataset.columns]
+                ).first()
+            else:
+                bad_lines = _json_lines_with_wrong_fields(spark, folder, dataset.columns)
+                if bad_lines:
+                    problems.append((
+                        dataset.name,
+                        f"{bad_lines} line(s) are not valid JSON or do not have exactly "
+                        f"the fields {list(dataset.columns)}",
+                    ))
+        except Exception as exc:
+            problems.append((dataset.name, _short_error(exc)))
+    return problems
+
+
 def verify_raw_datasets(spark, volume_root):
     """Check every dataset folder: present, readable, expected columns and row count."""
     results = []
@@ -210,9 +264,8 @@ def verify_raw_datasets(spark, volume_root):
                 *[F.count(F.col(c)).alias(c) for c in dataset.columns],
             ).first()
         except Exception as exc:
-            message = str(exc).strip().splitlines()[0][:300] if str(exc).strip() else repr(exc)
             results.append(VerifyResult(dataset.name, "READ_ERROR", dataset.expected_rows,
-                                        None, message))
+                                        None, _short_error(exc)))
             continue
 
         actual = counts["__rows"]

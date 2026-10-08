@@ -1,7 +1,7 @@
 ---
 step: 01
 slug: project-foundation
-status: approved
+status: done
 created: 2026-10-08
 approved: 2026-10-08
 ---

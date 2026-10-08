@@ -1,0 +1,24 @@
+customer_id,first_name,last_name,email,city,country,signup_date,updated_at
+C001,Ava,Thornton,ava.thornton@example.com,London,United Kingdom,2023-01-15,2023-01-15T09:00:00
+C002,Liam,Okafor,liam.okafor@example.com,Manchester,United Kingdom,2023-01-22,2023-01-22T09:00:00
+C003,Sofia,Marques,sofia.marques@example.com,Lisbon,Portugal,2023-02-03,2023-02-03T09:00:00
+C004,Noah,Brandt,noah.brandt@example.com,Berlin,Germany,2023-02-14,2023-02-14T09:00:00
+C005,Mia,Lindqvist,mia.lindqvist@example.com,Stockholm,Sweden,2023-02-27,2023-02-27T09:00:00
+C006,Lucas,Moreau,lucas.moreau@example.com,Lyon,France,2023-03-08,2023-03-08T09:00:00
+C007,Emma,Kowalski,emma.kowalski@example.com,Warsaw,Poland,2023-03-19,2023-03-19T09:00:00
+C007,Emma,Kowalski,emma.kowalski@example.com,Warsaw,Poland,2023-03-19,2023-03-19T09:00:00
+C008,Oliver,Haddad,oliver.haddad@example.com,Dublin,Ireland,2023-04-01,2023-04-01T09:00:00
+C009,Chloe,Nakamura,chloe.nakamura@example.com,Amsterdam,Netherlands,2023-04-12,2023-04-12T09:00:00
+C010,Ethan,Rossi,ethan.rossi@example.com,Milan,Italy,2023-04-25,2023-04-25T09:00:00
+C011,Isla,Fernandez,isla.fernandez@example.com,Madrid,Spain,2023-05-06,2023-05-06T09:00:00
+C012,Leo,Novak,leo.novak@example.com,Prague,Czechia,2023-05-17,2023-05-17T09:00:00
+C013,Grace,Dubois,grace.dubois@example.com,Brussels,Belgium,2023-05-29,2023-05-29T09:00:00
+C014,Henry,Svensson,henry.svensson@example.com,Gothenburg,Sweden,2023-06-10,2023-06-10T09:00:00
+C015,Zoe,Becker,zoe.becker@example.com,Munich,Germany,2023-06-21,2023-06-21T09:00:00
+C016,Jack,Murphy,jack.murphy@example.com,Cork,Ireland,2023-07-04,2023-07-04T09:00:00
+C017,Lily,Costa,lily.costa@example.com,Porto,Portugal,2023-07-16,2023-07-16T09:00:00
+C018,Samuel,Weber,samuel.weber@example.com,Vienna,Austria,2023-08-02,2023-08-02T09:00:00
+C019,Ella,Jansen,ella.jansen@example.com,Rotterdam,Netherlands,2023-08-19,2023-08-19T09:00:00
+C020,Daniel,Ricci,daniel.ricci@example.com,Rome,Italy,2023-09-05,2023-09-05T09:00:00
+,Jordan,Lee,jordan.lee@example.com,Edinburgh,United Kingdom,2023-09-18,2023-09-18T09:00:00
+C012,Leo,Novak,leo.novak.work@example.com,Brno,Czechia,2023-05-17,2024-03-18T14:30:00

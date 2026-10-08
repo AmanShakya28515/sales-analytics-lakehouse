@@ -1,0 +1,16 @@
+product_id,product_name,category,unit_price,is_active
+P001,Wireless Mouse,Electronics,24.99,true
+P002,Mechanical Keyboard,Electronics,89.00,true
+P003,USB-C Hub,Electronics,39.50,true
+P004,27in Monitor,Electronics,219.00,true
+P005,Laptop Stand,Accessories,34.90,true
+P006,Desk Lamp,Home Office,29.99,true
+P007,A5 Notebook Pack,Stationery,9.50,true
+P008,Gel Pen Pack,Stationery,6.75,true
+P009,Office Chair,Furniture,189.00,true
+P010,Standing Desk,Furniture,349.00,true
+P011,HD Webcam,Electronics,59.99,true
+P012,Noise-Cancelling Headphones,Electronics,149.00,true
+P013,Water Bottle,Lifestyle,18.00,false
+P014,Backpack,Accessories,64.50,true
+P015,Cable Organiser,Accessories,abc,true

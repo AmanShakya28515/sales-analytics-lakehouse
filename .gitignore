@@ -1,0 +1,15 @@
+# Local virtualenv (syntax checks only; not a project dependency)
+env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -2,7 +2,7 @@
 step: 02
 slug: bronze-ingestion
 spec: .claude/specs/02-bronze-ingestion.md
-status: approved
+status: reviewed
 created: 2026-10-08
 approved: 2026-10-08
 ---
@@ -205,8 +205,50 @@ env is dropped in `tearDownClass`.
     it the same way in this build, although it is outside plan 02. This
     suggests the step 01 run reported as "all passed" did not run that
     test successfully. The next full run will confirm.
-- Focused run 2 and full suite: _pending_ (expected Ran 27 / Ran 58, all green).
-(31 from step 01 + 27 new).
+- Focused run 2 (after fix `b467fec`, same parameters): **Ran 27 in 373s: failures=0,
+  errors=0, skipped=0. OK.**
+- Full suite (default pattern, `catalog=sales_lakehouse`): **Ran 58: failures=0, errors=0,
+  skipped=0.** This includes step 01 `test_extra_row_is_reported_as_count_mismatch`
+  after the append fix.
+- `bronze_ingest` re-run for `dev`: run id `ec3fad97d3254041b951e4fa3e002161`, counts
+  23/15/41/90. `DESCRIBE HISTORY dev_bronze.customers` shows 4 versions: v0 CREATE
+  TABLE, then v1–v3 WRITE (one per run, so overwrite does not append).
+  `SELECT DISTINCT _run_id` gives exactly one value, `ec3fad97…`.
+- `SHOW SCHEMAS IN sales_lakehouse LIKE 't01_*'`: no rows, so the tests cleaned up.
+
+**Unresolved:** none.
 
 ## Review log
-_(filled in by /review)_
+
+### 2026-10-08 — review
+Scope: the "Files changed" list and `git diff 4e36c0a` (11 files). Checked
+against AC-1 to AC-12, plan D1 and CLAUDE.md. Security was checked inline:
+- DDL names come from validated `layer_names()` plus registry constants, and
+  the comments are constants.
+- `run_id` only reaches Spark through `F.lit`.
+- No grants, no secrets, no real PII.
+
+No security findings.
+
+| ID | Sev | Where | Finding | Fix | State |
+|---|---|---|---|---|---|
+| Q-1 | Medium | `src/sales_lakehouse/raw_datasets.py:229-248`, `src/sales_lakehouse/bronze.py:117` | **An empty file passes validation and the full refresh empties the table.** The checks only fail an empty *folder*. A 0-byte file, a header-only CSV, or a folder holding only `_`/`.`-prefixed files that Spark ignores yields 0 rows with no error. The overwrite then replaces a good Bronze table with nothing, and every table is overwritten the same way. This is silent data loss in the AC-6 spirit ("missing or empty dataset → fail, change nothing"). It is recoverable via Delta time travel, but nothing flags it. | In `validate_raw_structure`, treat a dataset with 0 data rows as a problem: CSV — add `count(lit(1))` to the existing agg; JSON — count non-blank lines. Add one integration test (0-byte `products.csv` → `BronzeValidationError` naming products, versions unchanged). | fixed (retest) |
+| Q-2 | Low | `src/sales_lakehouse/bronze.py:111-118` | The four table writes are separate Delta transactions (a planned risk). An infrastructure failure mid-run leaves mixed `_run_id`s across tables. A re-run fixes it. | Accept; record under Known limitations at `/done`. | open |
+| Q-3 | Low | `docs/data_dictionary.md:85` | `_ingested_at` is documented as "when the run started", but it is taken after validation and DDL, just before the writes. | Reword to "when the run began writing (UTC)". | fixed (retest) |
+
+No High findings. AC-1 to AC-12 are implemented and covered (58/58 user-reported green).
+
+### 2026-10-08 — retest (Q-1, Q-3)
+- **Q-1 fixed:** `validate_raw_structure` now also fails a dataset with 0 data
+  rows. For CSV it uses `count(lit(1))` in the existing full-parse aggregate.
+  For JSON, `_json_line_counts` returns records and bad records over the
+  non-blank lines. New test `test_file_without_data_rows_changes_no_table`
+  covers a 0-byte `products.csv`, a header-only `customers.csv` and a
+  blank-line-only `orders.json`. Each must fail validation naming only that
+  dataset and leave all 4 table versions unchanged.
+- **Q-3 fixed:** the data dictionary now says `_ingested_at` is taken when
+  the run begins writing (after validation), and lists "no data rows" among
+  the failure causes.
+- Q-2 stays open (Low; goes to Known limitations at `/done`).
+- Measured by Claude: local syntax check OK. Databricks re-run: _pending_
+  (expected focused Ran 28, full Ran 59).

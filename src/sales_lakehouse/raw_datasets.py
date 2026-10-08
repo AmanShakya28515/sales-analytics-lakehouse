@@ -200,28 +200,35 @@ def _short_error(exc):
     return text.splitlines()[0][:300] if text else repr(exc)
 
 
-def _json_lines_with_wrong_fields(spark, folder, columns):
-    """Count non-blank JSON lines whose field names are not exactly `columns`.
+def _json_line_counts(spark, folder, columns):
+    """Return (records, bad records) over the non-blank lines of a JSON Lines folder.
 
-    A FAILFAST JSON read with a schema silently turns a missing field into
-    NULL, so the field names are checked on the raw text instead. Invalid JSON
-    gives NULL keys and is counted too.
+    A record is bad when its field names are not exactly `columns`. A FAILFAST
+    JSON read with a schema silently turns a missing field into NULL, so the
+    field names are checked on the raw text instead. Invalid JSON gives NULL
+    keys and is counted as bad too.
     """
     expected = F.array_sort(F.array(*[F.lit(c) for c in columns]))
     keys = F.array_sort(F.expr("json_object_keys(value)"))
-    return (
+    counts = (
         spark.read.text(folder)
         .where(F.trim(F.col("value")) != "")
-        .where(F.coalesce(keys != expected, F.lit(True)))
-        .count()
+        .agg(
+            F.count(F.lit(1)).alias("records"),
+            F.count(F.when(F.coalesce(keys != expected, F.lit(True)), 1)).alias("bad"),
+        )
+        .first()
     )
+    return counts["records"], counts["bad"]
 
 
 def validate_raw_structure(spark, volume_root):
     """Check that every dataset's files match the documented structure.
 
-    Row counts are deliberately not checked: the content may change between
-    runs. Returns a list of (dataset name, problem); an empty list means valid.
+    Exact row counts are deliberately not checked: the content may change
+    between runs. A dataset with no data rows at all (0-byte file, header-only
+    CSV) is a problem, because a full refresh would silently empty its table.
+    Returns a list of (dataset name, problem); an empty list means valid.
     """
     problems = []
     for dataset in DATASETS:
@@ -233,17 +240,21 @@ def validate_raw_structure(spark, volume_root):
             if dataset.file_format == "csv":
                 # Counting every column forces a full FAILFAST parse, so a wrong
                 # header or a line with the wrong number of fields raises.
-                read_raw(spark, volume_root, dataset).agg(
-                    *[F.count(F.col(c)) for c in dataset.columns]
-                ).first()
+                rows = read_raw(spark, volume_root, dataset).agg(
+                    F.count(F.lit(1)).alias("__rows"),
+                    *[F.count(F.col(c)) for c in dataset.columns],
+                ).first()["__rows"]
             else:
-                bad_lines = _json_lines_with_wrong_fields(spark, folder, dataset.columns)
+                rows, bad_lines = _json_line_counts(spark, folder, dataset.columns)
                 if bad_lines:
                     problems.append((
                         dataset.name,
                         f"{bad_lines} line(s) are not valid JSON or do not have exactly "
                         f"the fields {list(dataset.columns)}",
                     ))
+                    continue
+            if rows == 0:
+                problems.append((dataset.name, f"no data rows in {folder}"))
         except Exception as exc:
             problems.append((dataset.name, _short_error(exc)))
     return problems

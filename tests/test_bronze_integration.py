@@ -195,6 +195,21 @@ class BronzeIntegrationTest(unittest.TestCase):
         os.remove(self._file("products"))
         self._assert_run_fails_without_changes("products")
 
+    def test_file_without_data_rows_changes_no_table(self):
+        """AC-6 (review 02 Q-1): an empty file must not empty its Bronze table."""
+        ingest_bronze(self.spark, self.names.catalog, self.names.env)
+        header = ",".join(get_dataset("customers").columns) + "\n"
+        cases = [("products", ""), ("customers", header), ("orders", "\n")]
+        for dataset_name, content in cases:
+            with self.subTest(dataset=dataset_name, content=content[:20]):
+                load_sample_files(str(_context.SAMPLE_ROOT), self.volume)
+                with open(self._file(dataset_name), "w", encoding="utf-8") as handle:
+                    handle.write(content)
+                self.assertEqual(
+                    [d for d, _ in validate_raw_structure(self.spark, self.volume)], [dataset_name]
+                )
+                self._assert_run_fails_without_changes(dataset_name)
+
     def test_wrong_csv_header_changes_no_table(self):
         """AC-7"""
         ingest_bronze(self.spark, self.names.catalog, self.names.env)

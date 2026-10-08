@@ -82,16 +82,17 @@ every known issue below is present in Bronze. These metadata columns follow:
 
 | Column | Type | Meaning |
 |---|---|---|
-| `_ingested_at` | TIMESTAMP, not null | When the run started (UTC). The same for every row of one run. |
+| `_ingested_at` | TIMESTAMP, not null | When the run began writing the tables (UTC), after validation. The same for every row of one run. |
 | `_source_file` | STRING, not null | Full path of the raw file the row came from. |
 | `_run_id` | STRING, not null | Run identifier, the same across all four tables of one run. It is generated unless a Job passes one. |
 
 **Full refresh:** every run replaces each table with exactly the current raw
 files, so a re-run never duplicates rows. Earlier versions remain in Delta
 history (`DESCRIBE HISTORY`). **All or nothing:** all four datasets are
-validated first. If any is missing, has a wrong header, has a malformed line
-or has a JSON record with missing or extra fields, the run fails and no table
-is created or changed.
+validated first. If any is missing, has no data rows (for example an empty
+or header-only file), has a wrong header, has a malformed line or has a JSON
+record with missing or extra fields, the run fails and no table is created
+or changed.
 
 ## Known data-quality issues
 

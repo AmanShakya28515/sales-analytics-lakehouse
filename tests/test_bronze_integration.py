@@ -221,8 +221,11 @@ class BronzeIntegrationTest(unittest.TestCase):
     def test_malformed_csv_line_changes_no_table(self):
         """AC-7"""
         ingest_bronze(self.spark, self.names.catalog, self.names.env)
-        with open(self._file("order_items"), "a", encoding="utf-8") as handle:
-            handle.write("OI0091,O0001,P001,1,24.99,UNEXPECTED\n")
+        # Volume files cannot be opened in append mode (Errno 29), so rewrite the whole file.
+        with open(self._file("order_items"), encoding="utf-8") as handle:
+            content = handle.read()
+        with open(self._file("order_items"), "w", encoding="utf-8") as handle:
+            handle.write(content + "OI0091,O0001,P001,1,24.99,UNEXPECTED\n")
 
         self.assertEqual([d for d, _ in validate_raw_structure(self.spark, self.volume)], ["order_items"])
         self._assert_run_fails_without_changes("order_items")

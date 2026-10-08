@@ -179,6 +179,8 @@ env is dropped in `tearDownClass`.
   (resolves 01 Q-2).
 
 **Deviations / notes:**
+- Test-only fix outside plan scope (user-approved): `tests/test_raw_load_integration.py`
+  no longer appends to a volume file (Errno 29).
 - `ingest_bronze` returns `(run_id, counts)`, as planned. The counts come
   from `spark.table(...).count()` after each write.
 - Tests for AC-7 also call `validate_raw_structure` directly, asserting
@@ -188,7 +190,22 @@ env is dropped in `tearDownClass`.
 **Measured by Claude (2026-10-08):**
 - `env/Scripts/python.exe -m compileall -q src tests setup notebooks`: OK.
 
-**User-reported (Databricks):** _pending_. Expected suite size: 58 tests
+**User-reported (Databricks, 2026-10-08):**
+- `notebooks/bronze_ingest` for `dev`: run id `749c62dd3cee4a3794485509f18ea202`,
+  counts customers 23, products 15, orders 41, order_items 90 (as expected).
+- Focused run 1 (`pattern=test_bronze*.py`, `catalog=sales_lakehouse`):
+  **Ran 27: failures=0, errors=1, skipped=0**. The error was in
+  `test_malformed_csv_line_changes_no_table`: `OSError: [Errno 29] Illegal seek`
+  from `open(..., "a")` on a UC volume file. This is a **test defect, not a
+  pipeline bug**: volume files do not support append mode.
+  - Fix (test-only): read the file, then rewrite it with `"w"`, as the header
+    and JSON tests already do. Production code is unchanged.
+  - The same pattern existed in step 01 `test_raw_load_integration.py:74`
+    (`test_extra_row_is_reported_as_count_mismatch`). The user approved fixing
+    it the same way in this build, although it is outside plan 02. This
+    suggests the step 01 run reported as "all passed" did not run that
+    test successfully. The next full run will confirm.
+- Focused run 2 and full suite: _pending_ (expected Ran 27 / Ran 58, all green).
 (31 from step 01 + 27 new).
 
 ## Review log

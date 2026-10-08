@@ -71,8 +71,11 @@ class RawLoadIntegrationTest(unittest.TestCase):
     def test_extra_row_is_reported_as_count_mismatch(self):
         """AC-13"""
         path = f"{dataset_dir(self.volume, 'products')}/products.csv"
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write("P016,Extra Product,Accessories,5.00,true\n")
+        # Volume files cannot be opened in append mode (Errno 29), so rewrite the whole file.
+        with open(path, encoding="utf-8") as handle:
+            content = handle.read()
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content + "P016,Extra Product,Accessories,5.00,true\n")
         statuses = self._statuses()
         self.assertEqual(statuses["products"], "COUNT_MISMATCH")
         self.assertEqual({s for d, s in statuses.items() if d != "products"}, {"OK"})

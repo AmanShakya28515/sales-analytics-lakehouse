@@ -24,6 +24,7 @@ from pyspark.sql import Window
 from pyspark.sql import functions as F
 
 from sales_lakehouse.bronze import resolve_run_id
+from sales_lakehouse.inputs import pin_single_run
 from sales_lakehouse.naming import layer_names, quote
 from sales_lakehouse.raw_datasets import DATASETS
 
@@ -154,34 +155,10 @@ def check_bronze_inputs(spark, names):
     {dataset: version}). Raises SilverInputError when a table is missing, or
     when the tables do not hold exactly one `_run_id` between them.
     """
-    missing = [
-        d.name for d in DATASETS
-        if not spark.catalog.tableExists(f"{names.catalog}.{names.bronze}.{d.name}")
-    ]
-    if missing:
-        raise SilverInputError(
-            f"Silver stopped before changing any table: Bronze tables missing in "
-            f"{names.catalog}.{names.bronze}: {missing}. Run notebooks/bronze_ingest first."
-        )
-
-    versions, frames, run_ids = {}, {}, {}
-    for dataset in DATASETS:
-        table = quote(names.catalog, names.bronze, dataset.name)
-        version = int(spark.sql(f"DESCRIBE HISTORY {table} LIMIT 1").first()["version"])
-        versions[dataset.name] = version
-        frames[dataset.name] = spark.sql(f"SELECT * FROM {table} VERSION AS OF {version}")
-        # At most a few rows of metadata, never data rows.
-        run_ids[dataset.name] = sorted(
-            r["_run_id"] for r in frames[dataset.name].select("_run_id").distinct().limit(5).collect()
-        )
-
-    distinct = {run_id for ids in run_ids.values() for run_id in ids}
-    if len(distinct) != 1 or any(len(ids) != 1 for ids in run_ids.values()):
-        raise SilverInputError(
-            "Silver stopped before changing any table: the Bronze tables are not from a "
-            f"single Bronze run (_run_id per table: {run_ids}). Re-run notebooks/bronze_ingest."
-        )
-    return distinct.pop(), frames, versions
+    return pin_single_run(
+        spark, names.catalog, names.bronze, [d.name for d in DATASETS],
+        layer="Bronze", consumer="Silver", notebook="bronze_ingest", error=SilverInputError,
+    )
 
 
 # -- reason helpers ----------------------------------------------------------------

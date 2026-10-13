@@ -49,7 +49,10 @@ Run these in order with the same `catalog` and `env` widgets:
 5. `notebooks/silver_transform` cleans Bronze into typed, deduplicated
    Silver tables. Rejected rows go to `<env>_silver.quarantine` with every
    reason. It fails without changing anything if Bronze is missing or mixed.
-6. `tests/run_tests` runs the tests. Set `catalog` to run the integration
+6. `notebooks/gold_aggregate` builds the Gold tables `daily_sales`,
+   `product_sales` and `customer_summary` from Silver. Revenue counts only
+   completed and shipped orders.
+7. `tests/run_tests` runs the tests. Set `catalog` to run the integration
    tests, which create and drop their own temporary `t01_<random>` schemas.
 
 The sample data, the Bronze tables and the deliberate quality problems are

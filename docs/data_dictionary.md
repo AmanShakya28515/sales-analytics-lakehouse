@@ -170,6 +170,46 @@ P015, O0025, O0033, and 14 order items (OI0045, OI0060, OI0075, the 4 items
 of O0025 and O0033, and the other 7 items of P015). C007 and O0010 collapse
 to one row each, and C012 keeps its 2024-03-18 version.
 
+## Gold tables
+
+`notebooks/gold_aggregate` builds three business tables in the environment's
+Gold schema from the four Silver data tables. The quarantine is never read.
+
+**Definitions** (shared by all three tables, so their totals agree):
+- **Qualifying order:** a Silver order with status `completed` or `shipped`.
+  `pending` and `cancelled` orders count nowhere.
+- **Revenue:** the sum of quantity × unit_price over the items of qualifying
+  orders. That is the price paid at the time of sale, not the product's
+  list price.
+- **Units:** the sum of `quantity` over the same items.
+- Money is `DECIMAL(18,2)`. The average order value is revenue ÷ orders,
+  rounded half-up to 2 places.
+
+| Table | Grain | Columns | Rows (sample data) |
+|---|---|---|---|
+| `<env>_gold.daily_sales` | one row per `order_date` and `channel` that has qualifying orders | `order_date`, `channel`, `order_count`, `units`, `revenue`, `avg_order_value` | 29 |
+| `<env>_gold.product_sales` | one row per Silver product, with zeros when unsold | `product_id`, `product_name`, `category`, `is_active`, `order_count` (distinct orders), `units`, `revenue` | 14 |
+| `<env>_gold.customer_summary` | one row per Silver customer, with zeros when there are no qualifying orders | `customer_id`, `first_name`, `last_name`, `email`, `country`, `order_count`, `revenue`, `avg_order_value`, `first_order_date`, `last_order_date` | 20 |
+
+Every column is `NOT NULL` except, in `customer_summary`:
+- `country`
+- `avg_order_value`, `first_order_date` and `last_order_date`, which are
+  null when a customer has no qualifying orders.
+
+Each table also has `_run_id`, `_processed_at` and `_silver_run_id`.
+
+**Totals with the sample data:** 29 qualifying orders, 113 units, revenue
+9837.12. Revenue matches across all three tables, units match across
+`daily_sales` and `product_sales`, and orders match across `daily_sales`
+and `customer_summary`. Orders that lost items to quarantine count only
+their Silver items.
+
+**Full refresh with checked input:** each run replaces the three tables.
+It first checks that the four Silver tables exist, and that every
+non-empty table comes from one Silver run. Empty Silver tables are
+allowed. It then reads exactly those Delta versions. If the check fails,
+the run stops and no Gold table is created or changed.
+
 ## Known data-quality issues
 
 These records are deliberately dirty, so that later steps have problems to

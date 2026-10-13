@@ -248,6 +248,38 @@ built, plus the reasoning behind any structural choice.*
   - `_source_file` comes from `_metadata.file_path`, because
     `input_file_name()` is not available on serverless/UC. `_ingested_at`
     and `_run_id` are literals, identical across the four tables of a run.
+- **Silver (step 03):** `<env>_silver.customers`, `products`, `orders` and
+  `order_items` are typed (types and NOT NULLs from `SILVER_SCHEMA` in
+  `sales_lakehouse.silver`, matching `docs/data_dictionary.md`). Each also
+  has `_run_id`, `_processed_at` and `_bronze_run_id`. One shared
+  `<env>_silver.quarantine` table (plan 03 D1) holds every rejected row with
+  `dataset`, `record_key`, `reasons ARRAY<STRUCT<reason, column>>` (every
+  rule broken) and `source_record MAP` (the original Bronze text).
+  `notebooks/silver_transform` (`catalog`, `env`, optional `run_id`) calls
+  `transform_silver`. The cleaning logic is pure DataFrame functions
+  (`build_silver`), so unit tests need no tables.
+  - **Checked, pinned input.** All four Bronze tables must exist and hold
+    exactly one `_run_id` between them. If not, the run raises before any
+    DDL or write. Bronze is read `VERSION AS OF` the version that passed the
+    check.
+  - **Rule order:**
+    1. Trim, and turn `''` into NULL.
+    2. Collapse exact duplicates.
+    3. Resolve key duplicates. For customers the latest `updated_at` wins.
+       Anything unresolvable is `conflicting_duplicate`.
+    4. Apply the row rules: `null_key`, `missing_value`, `malformed_value`,
+       `invalid_value`.
+    5. Check references against the parent's **Silver** keys:
+       `orphan_reference` / `parent_rejected`, so rejections cascade to
+       children.
+
+    *Why duplicates come before the row rules (D3):* an invalid latest
+    version is quarantined, and an older version is never promoted in its
+    place. A null foreign key is only `missing_value` (D2).
+  - Typing uses `try_*` functions (`try_cast`, `try_to_timestamp`), because
+    serverless runs in ANSI mode, where a plain `cast` fails the whole query.
+  - **Full refresh**, the same pattern as Bronze: DDL inside the run after
+    the check, then `writeTo().overwrite(lit(True))` for all five tables.
 
 ### Known limitations (deliberately deferred)
 - `verify_raw_datasets` (`setup/02`): its own CSV-header and
@@ -259,7 +291,11 @@ built, plus the reasoning behind any structural choice.*
   folder empty until re-run, and verify reports it as `MISSING` (01 Q-4).
 - Bronze's four table writes are separate Delta transactions. A crash
   mid-run can leave tables from different runs (visible as mixed
-  `_run_id`s) until the next successful run (02 Q-2).
+  `_run_id`s) until the next successful run (02 Q-2). Silver's five writes
+  have the same limitation (03 Q-1).
+- Silver doesn't cache anything, so each write re-evaluates the whole
+  lineage, re-reading Bronze each time. This is fine at sample scale.
+  Revisit it with larger data or incremental processing (03 Q-3).
 
 ### Steps landed
 - 01 — Project foundation: project layout, per-environment UC schemas and
@@ -268,6 +304,10 @@ built, plus the reasoning behind any structural choice.*
 - 02 — Bronze ingestion: all-or-nothing validated, full-refresh ingestion of
   the four raw datasets into Bronze Delta tables with `_ingested_at`,
   `_source_file` and `_run_id` (suite 59 tests: 28 new, user-reported green).
+- 03 — Silver cleaning: typed, deduplicated Silver tables in which every
+  foreign key resolves, plus a shared quarantine recording every rejection
+  reason, built from checked, version-pinned Bronze by full refresh (suite
+  95 tests: 36 new, user-reported all passed).
 
 ---
 

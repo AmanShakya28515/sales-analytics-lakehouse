@@ -2,7 +2,7 @@
 step: 03
 slug: silver-cleaning
 spec: .claude/specs/03-silver-cleaning.md
-status: approved
+status: done
 created: 2026-10-13
 approved: 2026-10-13
 ---
@@ -248,7 +248,72 @@ Order does not matter.
 **Measured by Claude (2026-10-13):**
 - `env/Scripts/python.exe -m compileall -q src tests setup notebooks`: OK.
 
-**User-reported (Databricks):** pending.
+**User-reported (Databricks, 2026-10-13):**
+- `notebooks/silver_transform` for `dev`, on the existing step-02 Bronze
+  tables: run id `80f1443b239d4820ab4e1360c3ddf59c`. The bronze / silver /
+  collapsed / superseded / quarantined counts were:
+  - customers: 23 / 20 / 1 / 1 / 1 (`null_key`=1)
+  - products: 15 / 14 / 0 / 0 / 1 (`malformed_value`=1)
+  - orders: 41 / 38 / 1 / 0 / 2 (`malformed_value`=1, `orphan_reference`=1)
+  - order_items: 90 / 76 / 0 / 0 / 14 (`invalid_value`=1, `missing_value`=1,
+    `orphan_reference`=1, `parent_rejected`=11)
+
+  All counts match AC-16 and AC-20.
+- Quarantine query, focused Silver tests (`pattern=test_silver*.py`), full
+  suite (default pattern) and the `t01_*` cleanup check: the user reported
+  "all test passed" for all four. The exact `Ran …` lines were not given;
+  the expected values were 18 quarantine rows, 36 and 95 tests, and no
+  `t01_*` schemas.
+
+**Unresolved:** none.
 
 ## Review log
-_(filled in by /review)_
+
+### 2026-10-13 — review
+Scope: the "Files changed" list and `git diff be7fbec 195d988` (9 files).
+Checked against AC-1 to AC-20, D1 to D3 and CLAUDE.md.
+
+Security was checked inline:
+- SQL is built only from validated `layer_names()` and registry constants.
+- `VERSION AS OF` takes an `int` read from history, and the `try_cast`
+  expressions are built from constants.
+- Run ids reach Spark only through `F.lit`.
+- No grants or secrets are involved. Quarantine `source_record` keeps
+  fictional sample PII, which is an accepted trade-off.
+
+No security findings.
+
+Correctness, checked and OK:
+- Reference joins use distinct parent keys, so there is no fan-out.
+- The cascade uses the parent's Silver keys.
+- Null keys are excluded from duplicate windows.
+- Exact-duplicate collapse is deterministic.
+- `try_*` is used throughout, so no ANSI failures.
+- `collect()` is used only on run-id metadata and aggregated report rows.
+
+| ID | Sev | Where | Finding | Fix | State |
+|---|---|---|---|---|---|
+| Q-1 | Low | `src/sales_lakehouse/silver.py:443-445` | The five Silver writes are separate Delta transactions, the same as Bronze 02 Q-2. The input check removes the expected causes, but a failure in a later write leaves earlier tables on the new run while the rest stay on the old one. The mix is visible through `_run_id`, and a re-run fixes it. | Accept. Record under Known limitations at `/done`. | accepted |
+| Q-2 | Low | `src/sales_lakehouse/silver.py:211-213`, `docs/data_dictionary.md` (Silver section) | `signup_date`, `order_date` and `updated_at` have no time zone, so they are parsed in the Spark session time zone (UTC on serverless). The data dictionary doesn't say so. | Add one sentence to the data dictionary: Silver timestamps are interpreted in the session time zone (UTC). | fixed |
+| Q-3 | Low | `src/sales_lakehouse/silver.py:359-401`, `:404-424` | Nothing is cached, so each of the five writes and the report re-evaluate the whole lineage: order_items re-reads all four pinned Bronze versions and every window. This is negligible at sample scale, but it grows with data. | Accept for now. Revisit when data grows or incremental processing arrives, for example by writing parents first and joining against their Silver tables. | accepted |
+
+No High or Medium findings. AC-1 to AC-20 are implemented and covered.
+The user-reported results were the Silver run counts (exact match with
+AC-16 and AC-20) and "all test passed" for the focused suite, the full
+suite and cleanup. The exact `Ran …` lines were not recorded.
+
+### 2026-10-13 — retest (Q-2)
+- **Q-2 fixed:** the Silver cleaning rules in `docs/data_dictionary.md` now
+  say that source dates and timestamps carry no time zone, so they are read
+  in the Spark session time zone (UTC on serverless). This is a docs-only
+  change.
+- Measured by Claude: local syntax check OK. No code changed, so nothing
+  was re-run in Databricks. The `test_silver.py` docs test only checks
+  table names and reason codes.
+- Q-1 and Q-3 stay open (Low). They go to Known limitations at `/done`.
+
+### 2026-10-13 — close
+Q-2 was fixed in the retest (docs only, so nothing was re-run). Q-1 and Q-3
+(Low) were accepted by default and recorded under Known limitations in
+CLAUDE.md. The user reported the full suite green; the exact count was not
+given, and 95 tests were expected.

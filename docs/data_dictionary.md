@@ -128,7 +128,9 @@ Each table also has these metadata columns, all `NOT NULL`:
 4. Values are typed. Dates must be `yyyy-MM-dd`, timestamps
    `yyyy-MM-ddTHH:mm:ss`, booleans `true`/`false`; prices have 2 decimal
    places (more are rounded). Prices and quantities must be > 0, and
-   `status` and `channel` must be one of their documented values.
+   `status` and `channel` must be one of their documented values. Source
+   dates and timestamps carry no time zone, so they are read in the Spark
+   session time zone (UTC on serverless).
 5. Every foreign key must exist in the parent's **Silver** table, so a row
    whose parent was rejected is rejected too (the cascade).
 

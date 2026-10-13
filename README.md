@@ -46,7 +46,10 @@ Run these in order with the same `catalog` and `env` widgets:
 4. `notebooks/bronze_ingest` loads the raw files into the Bronze Delta tables.
    Each run is a full refresh with ingestion metadata. If any dataset is
    invalid, nothing is changed.
-5. `tests/run_tests` runs the tests. Set `catalog` to run the integration
+5. `notebooks/silver_transform` cleans Bronze into typed, deduplicated
+   Silver tables. Rejected rows go to `<env>_silver.quarantine` with every
+   reason. It fails without changing anything if Bronze is missing or mixed.
+6. `tests/run_tests` runs the tests. Set `catalog` to run the integration
    tests, which create and drop their own temporary `t01_<random>` schemas.
 
 The sample data, the Bronze tables and the deliberate quality problems are

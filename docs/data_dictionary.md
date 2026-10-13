@@ -94,6 +94,80 @@ or header-only file), has a wrong header, has a malformed line or has a JSON
 record with missing or extra fields, the run fails and no table is created
 or changed.
 
+## Silver tables
+
+`notebooks/silver_transform` cleans the four Bronze tables into typed tables
+in the environment's Silver schema:
+
+| Table | Columns and types | Rows (sample data) |
+|---|---|---|
+| `<env>_silver.customers` | `customer_id`, `first_name`, `last_name`, `email`, `city`, `country` STRING; `signup_date` DATE; `updated_at` TIMESTAMP | 20 |
+| `<env>_silver.products` | `product_id`, `product_name`, `category` STRING; `unit_price` DECIMAL(10,2); `is_active` BOOLEAN | 14 |
+| `<env>_silver.orders` | `order_id`, `customer_id` STRING; `order_date` DATE; `status`, `channel` STRING | 38 |
+| `<env>_silver.order_items` | `order_item_id`, `order_id`, `product_id` STRING; `quantity` INT; `unit_price` DECIMAL(10,2) | 76 |
+| `<env>_silver.quarantine` | rejected rows, see below | 18 |
+
+Every column is `NOT NULL` except `customers.city` and `customers.country`.
+Each table also has these metadata columns, all `NOT NULL`:
+
+| Column | Type | Meaning |
+|---|---|---|
+| `_run_id` | STRING | Silver run identifier, the same across all five tables of one run. |
+| `_processed_at` | TIMESTAMP | When the Silver run began building (UTC). |
+| `_bronze_run_id` | STRING | The Bronze `_run_id` the row was built from. |
+
+**Cleaning rules**, in this order:
+1. Text is trimmed, and empty text counts as NULL.
+2. Rows identical in every column collapse to one row (not a rejection).
+3. Rows sharing a primary key but differing elsewhere: for customers the
+   latest `updated_at` wins and the older versions are dropped as
+   superseded. If the latest `updated_at` is tied or unparseable, and for
+   every other dataset, all versions are rejected (`conflicting_duplicate`).
+   Duplicates are resolved before the checks below, so an invalid latest
+   version is rejected and an older version is never promoted in its place.
+4. Values are typed. Dates must be `yyyy-MM-dd`, timestamps
+   `yyyy-MM-ddTHH:mm:ss`, booleans `true`/`false`; prices have 2 decimal
+   places (more are rounded). Prices and quantities must be > 0, and
+   `status` and `channel` must be one of their documented values.
+5. Every foreign key must exist in the parent's **Silver** table, so a row
+   whose parent was rejected is rejected too (the cascade).
+
+**Full refresh with checked input:** each run replaces all five tables. It
+first checks that the four Bronze tables exist and come from one Bronze run,
+then reads exactly those Delta versions. Otherwise it fails and no Silver
+table is created or changed.
+
+## Quarantine
+
+`<env>_silver.quarantine` holds every rejected row, one row per rejected
+Bronze record:
+
+| Column | Type | Meaning |
+|---|---|---|
+| `dataset` | STRING | `customers`, `products`, `orders` or `order_items`. |
+| `record_key` | STRING | The trimmed primary key (NULL when the key is missing). |
+| `reasons` | ARRAY<STRUCT<reason, column>> | Every rule the row broke, with the column involved. |
+| `source_record` | MAP<STRING, STRING> | The original Bronze values, unchanged. |
+| `_source_file` | STRING | The raw file the row came from. |
+
+It has the same `_run_id`, `_processed_at` and `_bronze_run_id` columns.
+Reason codes:
+
+| Reason | Meaning |
+|---|---|
+| `null_key` | The primary key is empty. |
+| `missing_value` | A required column is empty (including a required foreign key). |
+| `malformed_value` | A value cannot be converted to its type, e.g. `abc` as a price or `2024-04-31` as a date. |
+| `invalid_value` | A value is outside its domain, e.g. quantity 0 or an unknown status. |
+| `conflicting_duplicate` | The key appears with different values that cannot be resolved. |
+| `orphan_reference` | The foreign key does not exist in the parent's Bronze table. |
+| `parent_rejected` | The parent exists in Bronze but was rejected by Silver. |
+
+With the sample data, 18 rows are quarantined: the customer with no id,
+P015, O0025, O0033, and 14 order items (OI0045, OI0060, OI0075, the 4 items
+of O0025 and O0033, and the other 7 items of P015). C007 and O0010 collapse
+to one row each, and C012 keeps its 2024-03-18 version.
+
 ## Known data-quality issues
 
 These records are deliberately dirty, so that later steps have problems to

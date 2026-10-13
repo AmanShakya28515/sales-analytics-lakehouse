@@ -15,6 +15,7 @@ feature workflow.
 | `tests/` | `unittest` tests (`test_<module>.py`) and the `run_tests` notebook that runs them in Databricks. |
 | `data/sample/` | The versioned raw sample files, one folder per dataset. |
 | `docs/` | Documentation, including the sample data dictionary. |
+| `dashboards/` | The AI/BI dashboard over Gold: its SQL queries and the `.lvdash.json` definition (step 05). |
 
 ## Unity Catalog objects (per environment)
 
@@ -52,7 +53,9 @@ Run these in order with the same `catalog` and `env` widgets:
 6. `notebooks/gold_aggregate` builds the Gold tables `daily_sales`,
    `product_sales` and `customer_summary` from Silver. Revenue counts only
    completed and shipped orders.
-7. `tests/run_tests` runs the tests. Set `catalog` to run the integration
+7. Open the dashboard `dashboards/sales_overview` and click **Refresh**
+   (first build: see `dashboards/README.md`). It reads only Gold.
+8. `tests/run_tests` runs the tests. Set `catalog` to run the integration
    tests, which create and drop their own temporary `t01_<random>` schemas.
 
 The sample data, the Bronze tables and the deliberate quality problems are

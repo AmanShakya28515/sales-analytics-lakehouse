@@ -95,9 +95,10 @@ same `NN-slug` filename.
 - Small numbered steps map cleanly onto future Jobs/Workflows tasks and CI
   pipeline runs.
 
-**Finding "the diff":** the project is not a git repository yet. The plan's
+**Finding "the diff":** the project is a git repository on GitHub
+(`AmanShakya28515/sales-analytics-lakehouse`, branch `main`). The plan's
 "Files changed" section, kept up to date by /build, is the official list of
-what a step touched.
+what a step touched. Use `git diff <commit before the step>` alongside it.
 
 ### Token-efficient execution
 Optimise for correctness, learning value and progress per token.
@@ -223,21 +224,50 @@ built, plus the reasoning behind any structural choice.*
 - **Tests:** `tests/run_tests` (widgets `pattern`, `catalog`). Integration tests
   create and drop their own random `t01_<hex>` schemas and are skipped when
   `catalog` is empty. Spark-free logic is tested with a recording stub.
+  Files in a UC volume cannot be opened in append mode (`Errno 29`). Tests
+  that change a raw file read it and rewrite it with `"w"`.
+- **Bronze (step 02):** `<env>_bronze.customers`, `products`, `orders` and
+  `order_items` are managed Delta tables. Each has the source columns as
+  `STRING` in registry order, then `_ingested_at TIMESTAMP`, `_source_file`
+  and `_run_id` (all `NOT NULL`). There are no keys or constraints on data
+  columns. Bronze keeps nulls, duplicates and malformed values as delivered.
+  `notebooks/bronze_ingest` (`catalog`, `env`, optional `run_id` for Jobs)
+  calls `sales_lakehouse.bronze.ingest_bronze`.
+  - **Write mode: full refresh.** Each run replaces every table with
+    `writeTo(table).overwrite(lit(True))`. This keeps the predeclared DDL,
+    comment and Delta history (one `WRITE` version per run). *Why:* simple
+    and idempotent, and it matches step 01's "reload replaces files".
+    Incremental ingestion (`COPY INTO`/Auto Loader) is a later step.
+  - **All or nothing.** `validate_raw_structure` checks all four datasets
+    before anything is created or written. A dataset fails if it is
+    missing, has no data rows, has a wrong CSV header or field count, or
+    has JSON records whose field names are not exactly the documented ones
+    (`json_object_keys`, because a schema'd JSON read hides missing keys).
+  - **DDL runs inside ingestion,** after validation (plan 02 D1). *Why:*
+    `setup/00` promises no tables, and a failed run must create none.
+  - `_source_file` comes from `_metadata.file_path`, because
+    `input_file_name()` is not available on serverless/UC. `_ingested_at`
+    and `_run_id` are literals, identical across the four tables of a run.
 
 ### Known limitations (deliberately deferred)
-- Raw-data verifier: the CSV-header and missing-JSON-column checks have no
-  test yet (01 Q-1). Add tests before reusing the verifier on new sources.
+- `verify_raw_datasets` (`setup/02`): its own CSV-header and
+  missing-JSON-column checks have no test (01 Q-1). Bronze uses
+  `validate_raw_structure` instead, which is fully tested.
 - No `.gitattributes`. Sample files are LF in git, but line endings are not
   enforced (01 Q-3).
-- `README.md` "Getting started" still describes manual import instead of the Git
-  folder (01 Q-2). Fix it in the next step that touches the README.
 - Sample loading is not atomic across datasets. A failed copy leaves that
   folder empty until re-run, and verify reports it as `MISSING` (01 Q-4).
+- Bronze's four table writes are separate Delta transactions. A crash
+  mid-run can leave tables from different runs (visible as mixed
+  `_run_id`s) until the next successful run (02 Q-2).
 
 ### Steps landed
 - 01 — Project foundation: project layout, per-environment UC schemas and
   `raw_data` volume, versioned sample datasets with documented dirty records,
   and a re-runnable load-and-verify flow (31 tests, user-reported green).
+- 02 — Bronze ingestion: all-or-nothing validated, full-refresh ingestion of
+  the four raw datasets into Bronze Delta tables with `_ingested_at`,
+  `_source_file` and `_run_id` (suite 59 tests: 28 new, user-reported green).
 
 ---
 

@@ -2,7 +2,7 @@
 step: 02
 slug: bronze-ingestion
 spec: .claude/specs/02-bronze-ingestion.md
-status: built
+status: done
 created: 2026-10-08
 approved: 2026-10-08
 ---
@@ -233,7 +233,7 @@ No security findings.
 | ID | Sev | Where | Finding | Fix | State |
 |---|---|---|---|---|---|
 | Q-1 | Medium | `src/sales_lakehouse/raw_datasets.py:229-248`, `src/sales_lakehouse/bronze.py:117` | **An empty file passes validation and the full refresh empties the table.** The checks only fail an empty *folder*. A 0-byte file, a header-only CSV, or a folder holding only `_`/`.`-prefixed files that Spark ignores yields 0 rows with no error. The overwrite then replaces a good Bronze table with nothing, and every table is overwritten the same way. This is silent data loss in the AC-6 spirit ("missing or empty dataset → fail, change nothing"). It is recoverable via Delta time travel, but nothing flags it. | In `validate_raw_structure`, treat a dataset with 0 data rows as a problem: CSV — add `count(lit(1))` to the existing agg; JSON — count non-blank lines. Add one integration test (0-byte `products.csv` → `BronzeValidationError` naming products, versions unchanged). | fixed (retest) |
-| Q-2 | Low | `src/sales_lakehouse/bronze.py:111-118` | The four table writes are separate Delta transactions (a planned risk). An infrastructure failure mid-run leaves mixed `_run_id`s across tables. A re-run fixes it. | Accept; record under Known limitations at `/done`. | open |
+| Q-2 | Low | `src/sales_lakehouse/bronze.py:111-118` | The four table writes are separate Delta transactions (a planned risk). An infrastructure failure mid-run leaves mixed `_run_id`s across tables. A re-run fixes it. | Accept; record under Known limitations at `/done`. | accepted |
 | Q-3 | Low | `docs/data_dictionary.md:85` | `_ingested_at` is documented as "when the run started", but it is taken after validation and DDL, just before the writes. | Reword to "when the run began writing (UTC)". | fixed (retest) |
 
 No High findings. AC-1 to AC-12 are implemented and covered (58/58 user-reported green).
@@ -254,3 +254,9 @@ No High findings. AC-1 to AC-12 are implemented and covered (58/58 user-reported
 - **User-reported (Databricks, after pulling `088296b`):** Bronze tests **Ran 28:
   failures=0, errors=0**. Full suite **Ran 59: failures=0, errors=0**.
   `SHOW SCHEMAS IN sales_lakehouse LIKE 't01_*'` returned no rows.
+
+### 2026-10-08 — close
+Q-1 and Q-3 were fixed in the retest (59/59 green). The user accepted Q-2
+(Low), and it is recorded under Known limitations in CLAUDE.md. CLAUDE.md
+"Finding the diff" was updated with the user's OK: the project is now a git
+repo. No code changed after the green run, so it was not re-run.

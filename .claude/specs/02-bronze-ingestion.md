@@ -1,7 +1,7 @@
 ---
 step: 02
 slug: bronze-ingestion
-status: approved
+status: done
 created: 2026-10-08
 approved: 2026-10-08
 ---

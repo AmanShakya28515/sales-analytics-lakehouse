@@ -1,7 +1,7 @@
 ---
 step: 04
 slug: gold-aggregates
-status: approved
+status: done
 created: 2026-10-13
 approved: 2026-10-13
 ---

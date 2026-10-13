@@ -280,6 +280,30 @@ built, plus the reasoning behind any structural choice.*
     serverless runs in ANSI mode, where a plain `cast` fails the whole query.
   - **Full refresh**, the same pattern as Bronze: DDL inside the run after
     the check, then `writeTo().overwrite(lit(True))` for all five tables.
+- **Shared input check (step 04, plan D1):** `sales_lakehouse.inputs.pin_single_run`
+  checks that a layer's input tables exist and share one `_run_id`, then
+  pins each one `VERSION AS OF` its checked version. Silver (on Bronze) and
+  Gold (on Silver) both use it. Reuse it for any later layer or consumer.
+  `allow_empty=True` (Gold, D2) skips empty tables in the run-id comparison,
+  because Silver can legitimately write an empty table.
+- **Gold (step 04):** `<env>_gold.daily_sales` (grain: `order_date` ×
+  `channel`), `product_sales` (one row per Silver product) and
+  `customer_summary` (one row per Silver customer). Schemas come from
+  `GOLD_SCHEMA` in `sales_lakehouse.gold`. Each table also has `_run_id`,
+  `_processed_at` and `_silver_run_id`. `notebooks/gold_aggregate` calls
+  `transform_gold`, and `build_gold` is pure, as in Silver.
+  - **One revenue definition:** qualifying orders are `completed` or
+    `shipped`. Revenue = Σ quantity × order-item `unit_price` (the price
+    paid, not the list price). Money is `DECIMAL(18,2)`. The average order
+    value is rounded half-up, and is NULL when there are 0 orders.
+  - **Order grain first.** Items are aggregated to one row per qualifying
+    order before the daily and customer roll-ups. Product sales uses
+    `countDistinct(order_id)`. *Why:* counting orders over item rows
+    double-counts them, which is the classic fan-out bug. This is also why
+    the totals reconcile across the three tables.
+  - Products and customers without sales are kept, with zeros and NULLs,
+    by left-joining from the Silver parent. The quarantine is never read.
+    Full refresh, the same as the other layers.
 
 ### Known limitations (deliberately deferred)
 - `verify_raw_datasets` (`setup/02`): its own CSV-header and
@@ -292,7 +316,14 @@ built, plus the reasoning behind any structural choice.*
 - Bronze's four table writes are separate Delta transactions. A crash
   mid-run can leave tables from different runs (visible as mixed
   `_run_id`s) until the next successful run (02 Q-2). Silver's five writes
-  have the same limitation (03 Q-1).
+  (03 Q-1) and Gold's three writes (04 Q-1) have the same limitation.
+- Gold's input check skips empty Silver tables, so it cannot tell whether an
+  empty table is current or left over from an older Silver run. Fix it by
+  putting the run id in the Delta commit metadata, if Jobs make it matter
+  (04 Q-2).
+- Gold relies on Silver's resolving foreign keys. A broken foreign key would
+  silently drop revenue at runtime. The reconciliation tests would catch
+  it, but the run itself doesn't check (04 Q-3).
 - Silver doesn't cache anything, so each write re-evaluates the whole
   lineage, re-reading Bronze each time. This is fine at sample scale.
   Revisit it with larger data or incremental processing (03 Q-3).
@@ -308,6 +339,10 @@ built, plus the reasoning behind any structural choice.*
   foreign key resolves, plus a shared quarantine recording every rejection
   reason, built from checked, version-pinned Bronze by full refresh (suite
   95 tests: 36 new, user-reported all passed).
+- 04 — Gold aggregates: daily sales, product sales and customer summary
+  built from checked, version-pinned Silver, with one revenue definition so
+  that the totals reconcile (sample revenue 9837.12), by full refresh (suite
+  128 tests: 33 new; focused run 33/33 OK, full suite user-reported OK).
 
 ---
 

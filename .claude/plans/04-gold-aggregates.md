@@ -2,7 +2,7 @@
 step: 04
 slug: gold-aggregates
 spec: .claude/specs/04-gold-aggregates.md
-status: approved
+status: done
 created: 2026-10-13
 approved: 2026-10-13
 ---
@@ -200,7 +200,64 @@ read-only class built once, mutating tests in a class that rebuilds in
 - `env/Scripts/python.exe -m compileall -q src tests setup notebooks`: OK.
   (pyspark isn't installed locally, so no test runs here.)
 
-**User-reported (Databricks):** pending.
+**User-reported (Databricks, 2026-10-13):**
+- `notebooks/gold_aggregate` for `dev` (existing step-03 Silver), run id
+  `f51b59a3a852438b8f96fb78a9010ba5`:
+  - daily_sales: 29 rows, 29 orders, 113 units, revenue 9837.12
+  - product_sales: 14 rows, 113 units, revenue 9837.12
+  - customer_summary: 20 rows, 29 orders, revenue 9837.12
+
+  This matches AC-9, and the totals reconcile (AC-8).
+- `notebooks/gold_aggregate` re-run for `dev`, run id
+  `596fbe5ba3dd4b2ea2a0713e9e02260e`: identical figures. The re-run
+  produced no duplicated rows (AC-10).
+- Focused tests (`pattern=test_gold*.py`, `catalog=sales_lakehouse`):
+  **Ran 33 in 677s: failures=0, errors=0, skipped=0. OK.**
+- Full suite (default pattern) and `t01_*` cleanup: the user reported
+  "everything ok". The exact `Ran …` line was not given; 128 tests were
+  expected, and no `t01_*` schemas.
+
+**Unresolved:** none.
 
 ## Review log
-_(filled in by /review)_
+
+### 2026-10-13 — review
+Scope: the "Files changed" list and `git diff 510da49 7dcdaab` (11 files).
+Checked against AC-1 to AC-13, D1, D2 and CLAUDE.md.
+
+Security was checked inline:
+- SQL is built only from validated names and constants.
+- `VERSION AS OF` takes an `int`.
+- Run ids reach Spark only through `F.lit`.
+- No grants or secrets are involved. `customer_summary` copies the
+  fictional sample names and emails from Silver, which is an accepted
+  trade-off.
+
+No security findings.
+
+Correctness, checked and OK:
+- **Aggregation grain:** orders are aggregated to one row per order before
+  the daily and customer roll-ups. Product sales uses
+  `countDistinct(order_id)`.
+- **Joins:** every join is on a key that is unique in Silver.
+- **Money:** it stays DECIMAL, and AOV is NULL when there are 0 orders.
+- **D1 refactor:** Silver's messages and return values are unchanged
+  (diff-checked). The user reported the full suite green.
+- **`collect()`:** used only on run-id metadata and one-row aggregates.
+
+| ID | Sev | Where | Finding | Fix | State |
+|---|---|---|---|---|---|
+| Q-1 | Low | `src/sales_lakehouse/gold.py:236-238` | The three Gold writes are separate Delta transactions, the same as 02 Q-2 and 03 Q-1. A failure mid-run leaves mixed `_run_id`s, and a re-run fixes it. | Accept. Extend the existing Known limitations line at `/done`. | accepted |
+| Q-2 | Low | `src/sales_lakehouse/inputs.py:44-46` | D2 trade-off: an empty Silver table has no `_run_id`, so the check cannot tell whether that empty table is from the current Silver run or a stale one (for example after a Silver crash mid-run, 03 Q-1). Gold would then aggregate it as empty. | Accept for now. If Jobs make this matter, record the run id in Delta commit metadata (`userMetadata`) and compare that instead of row values. Note it under Known limitations. | accepted |
+| Q-3 | Low | `src/sales_lakehouse/gold.py:174`, `:192` | Product and customer roll-ups left-join *from* the Silver parent, so an item or order whose parent is missing would silently drop out of revenue. Silver guarantees resolving FKs (03 AC-14), and the reconciliation tests (AC-8) would catch a regression, but nothing checks it at runtime. | Optional: have `transform_gold` raise if the three revenue totals in its report disagree. It's cheap, because the report already computes them. | accepted |
+
+No High or Medium findings. AC-1 to AC-13 are implemented and covered:
+- **Focused tests:** user-reported `Ran 33`, OK.
+- **Full suite:** user-reported "everything ok". The exact `Ran` line was
+  not recorded.
+- **Notebook:** two runs matched AC-9 exactly.
+
+### 2026-10-13 — close
+Q-1, Q-2 and Q-3 (all Low) were accepted by default and recorded under
+Known limitations in CLAUDE.md. No code changed after the green runs, so
+nothing was re-run.
